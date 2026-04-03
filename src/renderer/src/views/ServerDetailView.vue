@@ -159,6 +159,7 @@ onMounted(async () => {
   const cached = logCache.get(serverName.value)
   if (cached) {
     log.value = cached
+    nextTick(() => { if (consoleEl.value) consoleEl.value.scrollTop = consoleEl.value.scrollHeight })
   } else if (status.value === 'stopped') {
     // First visit and server stopped — load last log file
     await loadLastLog()
