@@ -1,3 +1,11 @@
+<script lang="ts">
+// Module-level — runs once when the module is loaded, NOT per component instance.
+// Survives navigation away and back (e.g. to the Plugins sub-route).
+type LogType = 'stdout' | 'stderr' | 'command' | 'response' | 'rcon-error' | 'system'
+interface LogEntry { type: LogType; text: string; time: string }
+const logCache = new Map<string, LogEntry[]>()
+</script>
+
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -22,13 +30,6 @@ const server = ref<ServerInfo | null>(null)
 const status = ref<ServerStatus>('stopped')
 
 // ── Unified log ───────────────────────────────────────────────────────────────
-
-type LogType = 'stdout' | 'stderr' | 'command' | 'response' | 'rcon-error' | 'system'
-
-interface LogEntry { type: LogType; text: string; time: string }
-
-// Module-level cache — survives navigation to sub-routes (e.g. Plugins) and back
-const logCache = new Map<string, LogEntry[]>()
 
 const log      = ref<LogEntry[]>([])
 const consoleEl = ref<HTMLElement | null>(null)
