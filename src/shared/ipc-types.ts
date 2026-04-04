@@ -79,6 +79,9 @@ export type ServerStatus   = 'stopped' | 'starting' | 'running' | 'stopping'
 export interface PaperVersion {
   key: string
   support: { status: SupportStatus }
+  channel: string
+  build: number
+  size: number
 }
 
 export interface PaperBuild {

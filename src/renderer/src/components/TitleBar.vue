@@ -36,9 +36,10 @@ async function close(): Promise<void> {
 
 <template>
   <header
+    id="app-titlebar"
     class="fixed top-0 left-0 right-0 z-[100] flex h-9 items-center
            border-b border-border bg-card text-card-foreground
-           select-none [app-region:drag]"
+           select-none [app-region:drag] pointer-events-auto"
     style="-webkit-app-region: drag"
   >
     <!-- App title -->

@@ -25,6 +25,7 @@ const emit = defineEmits<{
         class="fixed left-1/2 top-1/2 z-50 w-[calc(100vw-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2
                rounded-xl border border-border bg-card p-6 shadow-2xl
                focus:outline-none"
+        @pointer-down-outside="(e) => { if (document.getElementById('app-titlebar')?.contains(e.detail.originalEvent.target as Node)) e.preventDefault() }"
       >
         <div class="flex flex-col items-center gap-4 text-center">
           <div class="flex h-11 w-11 items-center justify-center rounded-full bg-red-500/10">

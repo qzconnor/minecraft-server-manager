@@ -16,20 +16,39 @@ async function gql<T>(query: string): Promise<T> {
 
 export async function getPaperVersions(): Promise<PaperVersion[]> {
   const data = await gql<{
-    project: { versions: { nodes: { key: string; support: { status: string } }[] } }
+    project: {
+      versions: {
+        nodes: {
+          key: string
+          support: { status: string }
+          builds: { nodes: { number: number; channel: string; downloads: { name: string; size: number }[] }[] }
+        }[]
+      }
+    }
   }>(`{
     project(key: "paper") {
       versions(first: 100) {
-        nodes { key support { status } }
+        nodes {
+          key
+          support { status }
+          builds(last: 1) { nodes { number channel downloads { name size } } }
+        }
       }
     }
   }`)
 
   return data.project.versions.nodes
-    .map((v) => ({
-      key: v.key,
-      support: { status: v.support.status as PaperVersion['support']['status'] }
-    }))
+    .map((v) => {
+      const b = v.builds.nodes[0]
+      const dl = b?.downloads.find((d) => !d.name.includes('mojang')) ?? b?.downloads[0]
+      return {
+        key:     v.key,
+        support: { status: v.support.status as PaperVersion['support']['status'] },
+        channel: b?.channel ?? 'DEFAULT',
+        build:   b?.number ?? 0,
+        size:    dl?.size ?? 0,
+      }
+    })
     .reverse()
 }
 

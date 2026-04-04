@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { DialogRoot, DialogPortal, DialogOverlay, DialogContent, DialogTitle, DialogDescription } from 'radix-vue'
-import { Package, RefreshCw, RotateCcw, Loader2 } from 'lucide-vue-next'
+import { Package, RefreshCw, RotateCcw, Loader2, TriangleAlert } from 'lucide-vue-next'
 import Button from '@/components/ui/button.vue'
 
 interface PendingChange {
@@ -14,17 +14,18 @@ const queue   = ref<PendingChange[]>([])
 const current = ref<PendingChange | null>(null)
 const acting  = ref(false)
 const open    = ref(false)
+const error   = ref<string | null>(null)
 
 function showNext(): void {
   if (current.value || queue.value.length === 0) return
   current.value = queue.value.shift()!
+  error.value = null
   open.value = true
 }
 
 let unsub: (() => void) | null = null
 onMounted(() => {
   unsub = window.api.on('plugin:changed', (payload) => {
-    // Replace existing queued entry for same plugin
     queue.value = queue.value.filter(
       q => !(q.serverName === payload.serverName && q.pluginName === payload.pluginName)
     )
@@ -37,6 +38,7 @@ onUnmounted(() => unsub?.())
 function dismiss(): void {
   open.value = false
   current.value = null
+  error.value = null
   setTimeout(showNext, 150)
 }
 
@@ -44,15 +46,20 @@ async function performAction(): Promise<void> {
   if (!current.value) return
   const { serverName, action } = current.value
   acting.value = true
+  error.value = null
   try {
     if (action === 'reload') {
+      const connected = await window.api.invoke('rcon:is-connected', { serverName })
+      if (!connected) await window.api.invoke('rcon:connect', { serverName })
       await window.api.invoke('rcon:send', { serverName, command: 'reload confirm' })
     } else {
       await window.api.invoke('server:restart', { name: serverName })
     }
-  } catch { /* best-effort */ } finally {
-    acting.value = false
     dismiss()
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    acting.value = false
   }
 }
 </script>
@@ -64,6 +71,7 @@ async function performAction(): Promise<void> {
       <DialogContent
         class="fixed left-1/2 top-1/2 z-50 w-[calc(100vw-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2
                rounded-2xl border border-border bg-card p-6 shadow-2xl focus:outline-none"
+        @pointer-down-outside="(e) => { if (document.getElementById('app-titlebar')?.contains(e.detail.originalEvent.target as Node)) e.preventDefault() }"
       >
         <div class="flex flex-col items-center gap-4 text-center">
           <div class="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10">
@@ -87,6 +95,12 @@ async function performAction(): Promise<void> {
               <span class="font-medium text-foreground capitalize">{{ current?.action }}</span>
               the server
             </span>
+          </div>
+
+          <!-- Error -->
+          <div v-if="error" class="flex w-full items-start gap-2 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-500">
+            <TriangleAlert :size="13" class="mt-0.5 shrink-0" />
+            <span>{{ error }}</span>
           </div>
 
           <div class="flex w-full gap-2">

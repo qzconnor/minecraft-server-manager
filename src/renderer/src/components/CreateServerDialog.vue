@@ -2,9 +2,11 @@
 import { ref, watch, computed, toRaw } from 'vue'
 import {
   DialogRoot, DialogPortal, DialogOverlay,
-  DialogContent, DialogTitle, DialogDescription, DialogClose
+  DialogContent, DialogTitle, DialogDescription, DialogClose,
+  SelectRoot, SelectTrigger, SelectValue, SelectPortal,
+  SelectContent, SelectViewport, SelectItem, SelectItemText, SelectItemIndicator,
 } from 'radix-vue'
-import { X, ServerCog, Loader2, RefreshCw } from 'lucide-vue-next'
+import { X, ServerCog, Loader2, RefreshCw, ChevronDown, Check } from 'lucide-vue-next'
 import Button from '@/components/ui/button.vue'
 import Input from '@/components/ui/input.vue'
 import Badge from '@/components/ui/badge.vue'
@@ -124,9 +126,37 @@ const canCreate = computed(() =>
 )
 
 const statusLabel: Record<SupportStatus, string> = {
-  SUPPORTED:   'Supported',
+  SUPPORTED:   'Stable',
   LEGACY:      'Legacy',
   UNSUPPORTED: 'Unsupported'
+}
+
+const statusVariant: Record<SupportStatus, 'supported' | 'legacy' | 'unsupported'> = {
+  SUPPORTED:   'supported',
+  LEGACY:      'legacy',
+  UNSUPPORTED: 'unsupported',
+}
+
+const channelLabel: Record<string, string> = {
+  DEFAULT:      'Stable',
+  ALPHA:        'Alpha',
+  EXPERIMENTAL: 'Experimental',
+}
+
+const channelVariant: Record<string, 'supported' | 'legacy' | 'unsupported'> = {
+  DEFAULT:      'supported',
+  ALPHA:        'legacy',
+  EXPERIMENTAL: 'legacy',
+}
+
+function versionLabel(channel: string | undefined): string {
+  if (!channel) return 'Stable'
+  return channelLabel[channel] ?? 'Stable'
+}
+
+function versionVariant(channel: string | undefined): 'supported' | 'legacy' | 'unsupported' {
+  if (!channel) return 'supported'
+  return channelVariant[channel] ?? 'supported'
 }
 
 // ── Create ────────────────────────────────────────────────────────────────────
@@ -171,6 +201,7 @@ async function handleCreate(): Promise<void> {
                data-[state=open]:animate-in data-[state=closed]:animate-out
                data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0
                data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
+        @pointer-down-outside="(e) => { if (document.getElementById('app-titlebar')?.contains(e.detail.originalEvent.target as Node)) e.preventDefault() }"
       >
         <!-- Header -->
         <div class="flex items-start justify-between gap-4 border-b border-border px-6 py-5">
@@ -214,37 +245,71 @@ async function handleCreate(): Promise<void> {
                 <div v-if="loadingVersions" class="flex h-9 items-center gap-2 text-xs text-muted-foreground">
                   <Loader2 :size="13" class="animate-spin" /> Loading versions…
                 </div>
-                <select
-                  v-else
-                  v-model="selectedV"
-                  :disabled="creating"
-                  class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground
-                         focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring
-                         disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <option v-for="v in versions" :key="v.key" :value="v.key">
-                    {{ v.key }} — {{ statusLabel[v.support.status] ?? v.support.status }}
-                  </option>
-                </select>
+                <SelectRoot v-else v-model="selectedV" :disabled="creating">
+                  <SelectTrigger
+                    class="flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input
+                           bg-background px-3 py-1 text-sm text-foreground
+                           focus:outline-none focus:ring-1 focus:ring-ring
+                           disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <div class="flex items-center gap-2 min-w-0">
+                      <SelectValue placeholder="Select version…" class="font-mono font-medium" />
+                      <!-- Show build channel once loaded, fall back to support status while loading -->
+                      <Badge
+                        v-if="selectedV && build && !loadingBuild"
+                        :variant="versionVariant(build.channel)"
+                        class="text-[10px] px-1.5 py-0"
+                      >
+                        {{ versionLabel(build.channel) }}
+                      </Badge>
+                      <Badge
+                        v-else-if="selectedV && loadingBuild && versions.find(v => v.key === selectedV)"
+                        variant="default"
+                        class="text-[10px] px-1.5 py-0 opacity-50"
+                      >
+                        …
+                      </Badge>
+                    </div>
+                    <ChevronDown :size="14" class="shrink-0 text-muted-foreground" />
+                  </SelectTrigger>
 
-                <!-- Inline build chips -->
-                <div v-if="loadingBuild" class="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Loader2 :size="11" class="animate-spin" /> Fetching build info…
-                </div>
-                <div v-else-if="build" class="flex flex-wrap items-center gap-2">
-                  <span class="rounded-md bg-muted px-2 py-0.5 font-mono text-xs text-foreground">
-                    #{{ build.number }}
-                  </span>
-                  <Badge :variant="build.channel === 'DEFAULT' ? 'supported' : 'legacy'">
-                    {{ build.channel }}
-                  </Badge>
-                  <span class="text-xs text-muted-foreground">
-                    {{ (build.download.size / 1_000_000).toFixed(1) }} MB
-                  </span>
-                  <span v-if="build.javaFlags.length" class="text-xs text-muted-foreground">
-                    · {{ build.javaFlags.length }} optimised JVM flags
-                  </span>
-                </div>
+                  <SelectPortal>
+                    <SelectContent
+                      position="popper"
+                      :side-offset="4"
+                      class="z-[200] w-[--radix-select-trigger-width] overflow-hidden rounded-md border border-border
+                             bg-card text-card-foreground shadow-lg
+                             data-[state=open]:animate-in data-[state=closed]:animate-out
+                             data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0
+                             data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
+                    >
+                      <SelectViewport class="max-h-60 p-1">
+                        <SelectItem
+                          v-for="v in versions"
+                          :key="v.key"
+                          :value="v.key"
+                          class="relative flex cursor-pointer select-none items-center justify-between rounded-sm
+                                 px-2 py-1.5 text-sm outline-none
+                                 data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground
+                                 data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
+                        >
+                          <div class="flex items-center gap-2 min-w-0">
+                            <SelectItemIndicator class="w-4 shrink-0 flex items-center justify-center">
+                              <Check :size="12" class="text-primary" />
+                            </SelectItemIndicator>
+                            <SelectItemText class="font-mono font-medium">{{ v.key }}</SelectItemText>
+                            <span class="text-xs text-muted-foreground">#{{ v.build }}</span>
+                            <span class="text-xs text-muted-foreground">{{ (v.size / 1_000_000).toFixed(1) }} MB</span>
+                          </div>
+                          <Badge :variant="versionVariant(v.channel)" class="text-[10px] px-1.5 py-0 ml-2 shrink-0">
+                            {{ versionLabel(v.channel) }}
+                          </Badge>
+                        </SelectItem>
+                      </SelectViewport>
+                    </SelectContent>
+                  </SelectPortal>
+                </SelectRoot>
+
               </div>
             </div>
 
@@ -298,12 +363,25 @@ async function handleCreate(): Promise<void> {
                 </div>
                 <div class="space-y-1.5">
                   <label class="text-xs font-medium text-foreground">Password</label>
-                  <div class="flex gap-1.5">
-                    <Input v-model="rconPassword" :disabled="creating" class="font-mono text-xs min-w-0" />
-                    <Button type="button" variant="outline" size="icon" class="shrink-0"
-                            :disabled="creating" title="Generate password" @click="generatePassword">
+                  <div class="flex h-9 w-full items-center rounded-md border border-input bg-background
+                              pr-1 shadow-sm focus-within:ring-1 focus-within:ring-ring">
+                    <input
+                      v-model="rconPassword"
+                      :disabled="creating"
+                      class="h-full min-w-0 flex-1 bg-transparent px-3 font-mono text-xs text-foreground
+                             placeholder:text-muted-foreground focus:outline-none
+                             disabled:cursor-not-allowed disabled:opacity-50"
+                    />
+                    <button
+                      type="button"
+                      :disabled="creating"
+                      title="Generate password"
+                      class="flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground
+                             hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                      @click="generatePassword"
+                    >
                       <RefreshCw :size="13" />
-                    </Button>
+                    </button>
                   </div>
                 </div>
               </div>

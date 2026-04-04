@@ -51,7 +51,7 @@ export function togglePlugin(
   // Pause / resume watcher if this is a dev plugin
   const devPlugin = listDevPlugins(serverPath).find(p => p.pluginName === pluginName)
   if (devPlugin) {
-    if (enable) startWatcher(serverName, devPlugin, win)
+    if (enable) startWatcher(serverName, serverPath, devPlugin, win)
     else stopWatcher(serverName, pluginName)
   }
 }
@@ -72,15 +72,20 @@ export function addDevPlugin(
   if (!fs.existsSync(pluginsDir)) fs.mkdirSync(pluginsDir, { recursive: true })
 
   const pluginName = path.basename(sourcePath)
-  const symlinkPath = path.join(pluginsDir, pluginName)
+  const destPath = path.join(pluginsDir, pluginName)
 
   // Remove existing file/symlink if present
   try {
-    const stat = fs.lstatSync(symlinkPath)
-    if (stat) fs.unlinkSync(symlinkPath)
+    const stat = fs.lstatSync(destPath)
+    if (stat) fs.unlinkSync(destPath)
   } catch { /* doesn't exist yet */ }
 
-  fs.symlinkSync(sourcePath, symlinkPath, 'file')
+  // Try symlink (requires Developer Mode or admin on Windows), fall back to copy
+  try {
+    fs.symlinkSync(sourcePath, destPath, 'file')
+  } catch {
+    fs.copyFileSync(sourcePath, destPath)
+  }
 
   const devPlugin: DevPlugin = { pluginName, sourcePath, action }
 
@@ -90,7 +95,7 @@ export function addDevPlugin(
   devPlugins.push(devPlugin)
   writeMeta(serverPath, { ...info, devPlugins })
 
-  startWatcher(serverName, devPlugin, win)
+  startWatcher(serverName, serverPath, devPlugin, win)
   return devPlugin
 }
 
@@ -134,7 +139,7 @@ export function restoreWatchers(
   for (const plugin of devPlugins) {
     // Only watch if the symlink is currently enabled (not renamed to .disabled)
     const enabledPath = path.join(serverPath, 'plugins', plugin.pluginName)
-    if (fs.existsSync(enabledPath)) startWatcher(serverName, plugin, win)
+    if (fs.existsSync(enabledPath)) startWatcher(serverName, serverPath, plugin, win)
   }
 }
 
@@ -147,6 +152,7 @@ export function stopAllWatchers(serverName: string): void {
 
 function startWatcher(
   serverName: string,
+  serverPath: string,
   devPlugin: DevPlugin,
   win: BrowserWindow | null
 ): void {
@@ -162,6 +168,12 @@ function startWatcher(
       if (existing) clearTimeout(existing)
       timers.set(key, setTimeout(() => {
         timers.delete(key)
+        // In copy-mode (no symlink), sync the updated JAR before notifying
+        const destPath = path.join(serverPath, 'plugins', pluginName)
+        try {
+          const stat = fs.lstatSync(destPath)
+          if (stat && !stat.isSymbolicLink()) fs.copyFileSync(sourcePath, destPath)
+        } catch { /* dest removed — skip copy */ }
         win?.webContents.send('plugin:changed', { serverName, pluginName, action })
       }, 600))
     })
